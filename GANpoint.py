@@ -9,7 +9,7 @@ batch_size = 1
 # noise truncation value
 truncation_randomize = 0.5
 truncation_walk = 0.05
-#
+# scaing of class vector
 scale_walk = 0.05
 
 os.environ["TFHUB_CACHE_DIR"] = './models'
@@ -73,6 +73,7 @@ with sess.as_default():
         elif behaviour == 'walk':
             if target in ['z', 'both']:
                 z_np += np.random.normal(scale=truncation_walk, size=(batch_size, 128)).astype('f')
+                z_np = np.clip(z_np, -truncation_randomize*2, truncation_randomize*2)  # confine at +- sigma 2
             if target in ['y', 'both']:
                 y_np += np.random.uniform(high=scale_walk, size=(batch_size, 1000)).astype('f')
                 y_np[y_np < 0] = 0  # replace all negatives with zero
