@@ -8,9 +8,12 @@ from tqdm import tqdm
 batch_size = 1
 # noise truncation value
 truncation_randomize = 0.5
+truncation_randomize_momentum = 0.01
 truncation_walk = 0.05
 # scaing of class vector
+scale_randomize_momentum = 0.01
 scale_walk = 0.05
+reward_ratio = 0.5
 
 os.environ["TFHUB_CACHE_DIR"] = './models'
 module = hub.Module('https://tfhub.dev/deepmind/biggan-deep-512/1')
@@ -35,6 +38,7 @@ with sess.as_default():
 
     while True:
 
+        reward = 0
         key = cv2.waitKey(50)
         if key == 27:  # ESC: exit
             break
@@ -57,9 +61,9 @@ with sess.as_default():
         elif key == ord('b'):
             target = 'both'
         elif key == 43:  # +: reward
-            print('Reward')
-        elif key == 45:  #
-            print('Punishment')
+            reward = 1
+        elif key == 45:  # -: punishment
+            reward = -1
 
         if not run:
             continue
@@ -67,9 +71,12 @@ with sess.as_default():
         if behaviour == 'randomize':
             if target in ['z', 'both']:
                 z_np = np.random.normal(scale=truncation_randomize, size=(batch_size, 128)).astype('f')
+                # z_mom = np.random.normal(scale=truncation_randomize_momentum, size=(batch_size, 128)).astype('f')
+                z_mom = np.zeros((batch_size, 128))
             if target in ['y', 'both']:
                 y_np = np.random.uniform(size=(batch_size, 1000)).astype('f')
                 y_np = y_np / y_np.sum()  # sum of probabilities should be 1.0
+                y_mom = np.random.normal(scale=scale_randomize_momentum, size=(batch_size, 1000)).astype('f')
         elif behaviour == 'walk':
             if target in ['z', 'both']:
                 z_np += np.random.normal(scale=truncation_walk, size=(batch_size, 128)).astype('f')
@@ -79,7 +86,18 @@ with sess.as_default():
                 y_np[y_np < 0] = 0  # replace all negatives with zero
                 y_np = y_np / y_np.sum()  # sum of probabilities should be 1.0
         elif behaviour == 'optimize':
-            pass
+            if target in ['z', 'both']:
+                if reward > 0:
+                    z_mom *= 1 + reward_ratio
+                if reward < 0:
+                    z_mom *= 1 - reward_ratio
+                z_mom *= 0.95
+
+                z_np += z_mom
+                z_np = np.clip(z_np, -truncation_randomize*2, truncation_randomize*2)  # confine at +- sigma 2
+                print(z_mom.sum())
+                z_mom += np.random.normal(scale=truncation_randomize_momentum, size=(batch_size, 128)).astype('f')
+                z_mom = np.clip(z_mom, 0, truncation_randomize_momentum*2)
 
         image = sess.run(samples, feed_dict={z: z_np, y: y_np})
 
