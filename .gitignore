@@ -1,4 +1,4 @@
 __pycache_/
 
-models
-!models/.gitkeep
+/models/*
+!/models/.gitkeep
