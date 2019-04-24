@@ -1,9 +1,15 @@
 import os
+import sys
+
 import cv2
 import numpy as np
 import tensorflow as tf
 import tensorflow_hub as hub
 
+from resources.imagenet1000_labels import labels
+
+os.environ["TFHUB_CACHE_DIR"] = './models'
+module = hub.Module('https://tfhub.dev/deepmind/biggan-deep-512/1')
 batch_size = 1
 # noise truncation value
 truncation_randomize = 0.5
@@ -14,8 +20,35 @@ scale_randomize_momentum = 0.01
 scale_walk = 0.05
 reward_ratio = 0.5
 
-os.environ["TFHUB_CACHE_DIR"] = './models'
-module = hub.Module('https://tfhub.dev/deepmind/biggan-deep-512/1')
+def export_point(ys, zs):
+    with open('saves/save.gpt', 'w') as file:
+        for label, y in zip(labels, ys):
+            file.write('{}\t{}\n'.format(y, label))
+        for i, z in zip(range(128), zs):
+            file.write('{}\t{}\n'.format(z, i+1))
+
+def import_point(path):
+    try:
+        z, y = [], []
+        with open(path) as file:
+            for i, line in enumerate(file):
+                number = float(line.split('\t')[0])
+                if i < 1000:
+                    z.append(number)
+                else:
+                    y.append(number)
+        return np.array([z]), np.array([y])
+    except Exception as e:
+        print('Loading "{}" failed due to "{}"'.format(path, e))
+
+ganpoints = []
+if len(sys.argv) > 1:
+    for path in sys.argv[1:]:
+        ganpoint = import_point(path)
+        if ganpoint:
+            ganpoints.append(ganpoint)
+print('Found {} ganpoints'.format(len(ganpoints)))
+
 
 y_tf = tf.Variable(np.zeros((batch_size, 1000)).astype('f'))
 z_tf = tf.Variable(np.zeros((batch_size, 128)).astype('f'))
@@ -25,7 +58,6 @@ z_tf = tf.Variable(np.zeros((batch_size, 128)).astype('f'))
 samples = module(dict(y=y_tf, z=z_tf, truncation=truncation_randomize))
 
 sess = tf.Session()
-ganpoints = []
 with sess.as_default():
     sess.run(tf.global_variables_initializer())
     sess.run(tf.tables_initializer())
@@ -58,6 +90,9 @@ with sess.as_default():
         elif key == ord('o'):
             behaviour = 'optimize'
 
+        elif key == ord('e'):
+            export_point(y[0], z[0])
+
         elif key == ord('y'):
             target = 'y'
         elif key == ord('z'):
@@ -70,7 +105,8 @@ with sess.as_default():
             print('Set point #{}'.format(len(ganpoints)))
         elif key == 8:  # BACK: return to point
             print('Load point #{}'.format(len(ganpoints)))
-            y, z = ganpoints.pop()
+            if len(ganpoints) > 0:
+                y, z = ganpoints.pop()
 
         elif key == 82:  # UP: reward
             reward = '-'
